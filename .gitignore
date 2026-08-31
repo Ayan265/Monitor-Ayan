@@ -1,0 +1,32 @@
+# Ignore Data and Logs
+data/
+logs/
+archive/
+*.log
+*.csv
+*.sqlite3
+
+# Ignore Node.js / Puppeteer
+node_modules/
+.wwebjs_cache/
+.wwebjs_auth/
+package-lock.json
+
+# Ignore Python
+venv/
+__pycache__/
+*.pyc
+.env
+
+# Ignore Instagram Session
+~/.ig_session
+~/.ig_settings.json
+.ig_session
+.ig_settings.json
+
+# Ignore IDE / OS files
+.vscode/
+.DS_Store
+
+# Ignore Secrets Folder
+private/

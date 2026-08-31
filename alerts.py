@@ -1,0 +1,199 @@
+import time
+import subprocess
+import datetime
+import os
+import json
+import logging
+import threading
+from config import (
+    QUEUE_FILE,
+    ALERT_WHATSAPP_TARGETS,
+    ALERT_IG_USERNAMES,
+    log
+)
+
+queue_lock = threading.Lock()
+
+
+def queue_failed_message(message, platform, target, image_path=None):
+    """Save a failed message to the vault to be retried later."""
+    with queue_lock:
+        queue = []
+        if os.path.exists(QUEUE_FILE):
+            try:
+                with open(QUEUE_FILE, "r") as f:
+                    queue = json.load(f)
+            except Exception:
+                pass
+                
+        queue.append({
+            "timestamp": str(datetime.datetime.now()),
+            "message": f"{message}\n\n⏳ *(Delayed Delivery)*",
+            "platform": platform,
+            "target": target,
+            "image_path": image_path
+        })
+        
+        try:
+            with open(QUEUE_FILE, "w") as f:
+                json.dump(queue, f, indent=4)
+            log.info(f"Queued failed {platform} message for {target}")
+        except Exception as e:
+            log.error(f"Failed to queue message: {e}")
+
+
+def retry_failed_messages(wa_client, ig_client):
+    """Attempt to flush the message vault."""
+    if not os.path.exists(QUEUE_FILE):
+        return
+        
+    try:
+        with open(QUEUE_FILE, "r") as f:
+            queue = json.load(f)
+            
+        if not queue:
+            return
+            
+        print(f"[*] Found {len(queue)} messages in the Vault. Attempting retry...")
+        log.info(f"Attempting to retry {len(queue)} queued messages.")
+        
+        remaining_queue = []
+        wa_started = False
+        
+        for item in queue:
+            success = False
+            platform = item.get("platform")
+            target = item.get("target")
+            msg = item.get("message")
+            image_path = item.get("image_path")
+            
+            if image_path and not os.path.exists(image_path):
+                log.warning(f"Image {image_path} missing from disk. Stripping image from queued message.")
+                image_path = None
+                item["image_path"] = None
+            
+            if platform == "whatsapp" and wa_client:
+                if not wa_started:
+                    print("[*] Waiting for WhatsApp to be ready for queue processing...")
+                    try:
+                        wa_client.start_client()
+                        wa_started = True
+                        for _ in range(120):
+                            if wa_client.is_ready():
+                                break
+                            time.sleep(1)
+                    except Exception:
+                        pass
+                
+                if wa_client.is_ready():
+                    success = wa_client.send_summary_msg(target, msg, image_path)
+            
+            elif platform == "instagram" and ig_client:
+                try:
+                    success = ig_client.send_message(target, msg, image_path)
+                except:
+                    success = False
+                    
+            if not success:
+                remaining_queue.append(item)
+                
+        with open(QUEUE_FILE, "w") as f:
+            json.dump(remaining_queue, f, indent=4)
+    except Exception as e:
+        log.error(f"Failed to process message queue: {e}")
+
+
+def send_alert(message, wa_client, ig_client, take_screenshot=False, delete_locally=True, custom_image_path=None, block=False, custom_targets=None):
+    """Send alerts to messengers. Failures here MUST NOT crash the monitor."""
+    print(f"\n[!!!] TRIGGERING ALERT: {message}")
+    log.info(f"ALERT TRIGGERED: {message}")
+    
+    image_path = custom_image_path
+    if take_screenshot and not custom_image_path:
+        try:
+            image_path = f"/tmp/accountability_alert_{int(time.time())}.png"
+            
+            # 1. SPAM the ESC key to forcefully rip them out of full-screen video
+            subprocess.run("xdotool key Escape Escape Escape", shell=True)
+            time.sleep(0.3) # Wait for animation
+            
+            # 2. Simulate Shift+PrintScreen to trigger GNOME's native Wayland screenshot
+            subprocess.run("xdotool key Shift+Print", shell=True)
+            time.sleep(1.5) # Wait for GNOME to save the file
+            
+            # 3. Grab the newest screenshot from ~/Pictures/Screenshots
+            import glob
+            screenshots_dir = os.path.expanduser("~/Pictures/Screenshots")
+            list_of_files = glob.glob(os.path.join(screenshots_dir, "*"))
+            if list_of_files:
+                latest_file = max(list_of_files, key=os.path.getctime)
+                # Move it to our temp path so the rest of the script can use it
+                subprocess.run(f"mv '{latest_file}' {image_path}", shell=True)
+            else:
+                print("[-] No screenshots found in Pictures/Screenshots")
+            
+            # 3. Hit ESC again just in case they tried to be fast
+            subprocess.run("xdotool key Escape", shell=True)
+            print("[*] Screen captured and ESC key spammed.")
+        except Exception as e:
+            print(f"[-] Failed to take screenshot: {e}")
+            log.error(f"Failed to take screenshot: {e}")
+
+    def _network_send():
+        if wa_client:
+            try:
+                # Ensure WA backend is started (the prompter thread doesn't
+                # go through the main loop's JIT boot, so WA may be cold)
+                try:
+                    wa_client.start_client()
+                except Exception:
+                    pass
+
+                # Wait for WA to finish booting
+                print("[*] Waiting for WhatsApp to be ready...")
+                for i in range(120):  # Poll for up to 120 seconds
+                    if wa_client.is_ready():
+                        break
+                    time.sleep(1)
+                
+                if wa_client.is_ready():
+                    targets = custom_targets if custom_targets is not None else ALERT_WHATSAPP_TARGETS
+                    for num in targets:
+                        success = wa_client.send_alert_msg(num, message, image_path, delete_locally=delete_locally)
+                        if not success:
+                            queue_failed_message(message, "whatsapp", num, image_path)
+                else:
+                    log.error("WhatsApp not ready after 120s — alert NOT sent via WA")
+                    print("[-] WhatsApp not ready after 120s — skipping WA alert")
+                    targets = custom_targets if custom_targets is not None else ALERT_WHATSAPP_TARGETS
+                    for num in targets:
+                        queue_failed_message(message, "whatsapp", num, image_path)
+            except Exception as e:
+                log.error(f"WhatsApp alert failed: {e}")
+                print(f"[-] WhatsApp alert failed: {e}")
+                targets = custom_targets if custom_targets is not None else ALERT_WHATSAPP_TARGETS
+                for num in targets:
+                    queue_failed_message(message, "whatsapp", num, image_path)
+
+        if ig_client:
+            try:
+                for user in ALERT_IG_USERNAMES:
+                    try:
+                        success = ig_client.send_message(user, message, image_path)
+                        if success is False: # Depending on instagrapi return
+                            queue_failed_message(message, "instagram", user, image_path)
+                    except Exception as ig_err:
+                        queue_failed_message(message, "instagram", user, image_path)
+            except Exception as e:
+                log.error(f"Instagram alert failed globally: {e}")
+                print(f"[-] Instagram alert failed globally: {e}")
+                try:
+                    subprocess.run(['notify-send', '-u', 'critical', '⚠️ IG SESSION FAILED', 'Your Instagram login expired! Check monitor.log'])
+                except Exception:
+                    pass
+
+    # Run the network sending in the background so the main monitor loop NEVER freezes or misses seconds
+    t = threading.Thread(target=_network_send, daemon=not block)
+    t.start()
+    if block:
+        t.join()
