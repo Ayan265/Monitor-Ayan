@@ -12,7 +12,7 @@ import config
 
 def not_work_after_protocol_activated(wa_client, ig_client):
     msg = config.MESSAGES.get("PROTOCOL_FAILED", "[PROTOCOL FAILED] The user failed to complete the required amount of productive work. Protocol triggered.")
-    send_alert(msg, wa_client, ig_client, take_screenshot=True, custom_targets=config.ALERT_WHATSAPP_TARGETS)
+    send_alert(msg, wa_client, ig_client, take_screenshot=True, custom_targets=config.SUMMARY_WHATSAPP_TARGETS)
 
 def protocol_thread(wa_client, ig_client):
     global is_protocol_active
@@ -25,7 +25,7 @@ def protocol_thread(wa_client, ig_client):
         "I hope you understand what that means.\n\n"
         "Ever stop to think what Miss would think after receiving that message?"
     )
-    send_alert(initial_msg, wa_client, ig_client, take_screenshot=False, custom_targets=config.ALERT_WHATSAPP_TARGETS)
+    send_alert(initial_msg, wa_client, ig_client, take_screenshot=False, custom_targets=config.SUMMARY_WHATSAPP_TARGETS)
     try:
         subprocess.run(['notify-send', '-u', 'critical', '🚨 MANDATORY WORK PROTOCOL ACTIVATED', 'You have 1 hour to complete 40 mins of work.'])
     except:
@@ -70,7 +70,7 @@ def protocol_thread(wa_client, ig_client):
         not_work_after_protocol_activated(wa_client, ig_client)
     else:
         success_msg = "Protocol Satisfied: 40 minutes of productive work detected. The Mandatory Protocol is deactivated."
-        send_alert(success_msg, wa_client, ig_client, take_screenshot=False, custom_targets=config.ALERT_WHATSAPP_TARGETS)
+        send_alert(success_msg, wa_client, ig_client, take_screenshot=False, custom_targets=config.SUMMARY_WHATSAPP_TARGETS)
 
     is_protocol_active = False
 
