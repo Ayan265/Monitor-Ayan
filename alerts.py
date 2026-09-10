@@ -113,31 +113,24 @@ def send_alert(message, wa_client, ig_client, take_screenshot=False, delete_loca
         try:
             image_path = f"/tmp/accountability_alert_{int(time.time())}.png"
             
-            # 1. SPAM the ESC key to forcefully rip them out of full-screen video
-            subprocess.run("xdotool key Escape Escape Escape", shell=True)
-            time.sleep(0.3) # Wait for animation
-            
-            # 2. Simulate Shift+PrintScreen to trigger GNOME's native Wayland screenshot
-            subprocess.run("xdotool key Shift+Print", shell=True)
-            time.sleep(1.5) # Wait for GNOME to save the file
-            
-            # 3. Grab the newest screenshot from ~/Pictures/Screenshots
-            import glob
-            screenshots_dir = os.path.expanduser("~/Pictures/Screenshots")
-            list_of_files = glob.glob(os.path.join(screenshots_dir, "*"))
-            if list_of_files:
-                latest_file = max(list_of_files, key=os.path.getctime)
-                # Move it to our temp path so the rest of the script can use it
-                subprocess.run(f"mv '{latest_file}' {image_path}", shell=True)
+            # Use the Wayland portal screenshot helper (runs with system python3)
+            # This saves directly to our /tmp path — never touches ~/Pictures/Screenshots
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            ss_script = os.path.join(script_dir, "scripts", "wayland_screenshot.py")
+            result = subprocess.run(
+                ["/usr/bin/python3", ss_script, image_path],
+                capture_output=True, text=True, timeout=10
+            )
+            if result.returncode == 0 and os.path.exists(image_path):
+                print("[*] Wayland screenshot captured successfully.")
             else:
-                print("[-] No screenshots found in Pictures/Screenshots")
-            
-            # 3. Hit ESC again just in case they tried to be fast
-            subprocess.run("xdotool key Escape", shell=True)
-            print("[*] Screen captured and ESC key spammed.")
+                print(f"[-] Screenshot failed: {result.stderr.strip()}")
+                log.warning(f"Screenshot failed: {result.stderr.strip()}")
+                image_path = None
         except Exception as e:
             print(f"[-] Failed to take screenshot: {e}")
             log.error(f"Failed to take screenshot: {e}")
+            image_path = None
 
     def _network_send():
         if wa_client:

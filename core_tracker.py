@@ -14,19 +14,24 @@ except ImportError:
 
 
 def get_active_window_title():
-    # 1. Try Wayland GNOME Extension
+    # 1. Try Wayland: GNOME Shell Extension via gdbus (zero Python deps)
     try:
-        import dbus
-        bus = dbus.SessionBus()
-        obj = bus.get_object('org.gnome.Shell', '/org/gnome/Shell/Extensions/ActiveWindow')
-        iface = dbus.Interface(obj, 'org.gnome.Shell.Extensions.ActiveWindow')
-        title = iface.GetTitle()
-        if title:
-            return str(title).lower()
+        result = subprocess.check_output(
+            ['gdbus', 'call', '--session',
+             '--dest', 'org.gnome.Shell',
+             '--object-path', '/org/gnome/Shell/Extensions/ActiveWindow',
+             '--method', 'org.gnome.Shell.Extensions.ActiveWindow.GetTitle'],
+            stderr=subprocess.DEVNULL, timeout=2
+        ).decode('utf-8').strip()
+        # gdbus returns: ('Window Title',)
+        if result.startswith("('") and result.endswith("',)"):
+            title = result[2:-3]  # Strip ('...',)
+            if title:
+                return title.lower()
     except Exception:
         pass
-        
-    # 2. Fallback to X11 (xdotool)
+
+    # 2. Fallback to X11 (xdotool) — works on Xorg sessions
     try:
         window_id = subprocess.check_output(['xdotool', 'getwindowfocus'], stderr=subprocess.DEVNULL).decode('utf-8').strip()
         window_name = subprocess.check_output(['xdotool', 'getwindowname', window_id], stderr=subprocess.DEVNULL).decode('utf-8').strip()

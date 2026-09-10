@@ -7,12 +7,14 @@ import logging
 import requests
 import csv
 import re
+import config
 from config import (
     GEMINI_API_KEY,
     SUMMARY_WHATSAPP_TARGETS,
     ALERT_IG_USERNAMES,
     RULES,
     LOG_FILE,
+    SCRIPT_DIR,
     log
 )
 from data_manager import get_top_time_sinks, get_weekly_time_sinks, update_and_get_daily_scores
@@ -411,7 +413,7 @@ def send_daily_summary(time_spent, wa_client, ig_client, target_date_str=None):
         # --- DAILY REFLECTION LOG ---
         if ai_data:
             try:
-                reflection_path = "/home/ayan/Desktop/Daily_Reflection.md"
+                reflection_path = os.path.join(SCRIPT_DIR, "data", "Daily_Reflection.md")
                 with open(reflection_path, 'a', encoding='utf-8') as f:
                     f.write(f"\n## {target_date_str}\n\n")
                     

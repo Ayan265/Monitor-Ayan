@@ -418,10 +418,8 @@ app.post('/send_alert', async (req, res) => {
         res.json({ success: true, status: 'Alert Sent!' });
     } catch (err) {
         console.error("[-] Error sending alert:", err);
-        console.log("ACTUAL ERROR STRING:", err.toString());
-        res.status(500).json({ error: err.toString() });
         const errStr = err.stack ? err.stack : err.toString();
-        console.log("ERRSTR IS:", errStr);
+        res.status(500).json({ error: errStr });
         if (errStr.includes("detached Frame") || errStr.includes("Protocol error") || errStr.includes("evaluate") || errStr.includes("r: r") || errStr.includes("r")) {
             console.error("[-] Critical Puppeteer error. Auto-recovering...");
             destroyClient().then(() => {
@@ -473,7 +471,6 @@ app.post('/send_summary', async (req, res) => {
         console.error("[-] Error sending summary:", err);
         const errStr = err.stack ? err.stack : err.toString();
         res.status(500).json({ error: errStr });
-        console.log("ERRSTR IS:", errStr);
         if (errStr.includes("detached Frame") || errStr.includes("Protocol error") || errStr.includes("evaluate") || errStr.includes("r: r") || errStr.includes("r")) {
             console.error("[-] Critical Puppeteer error. Auto-recovering...");
             destroyClient().then(() => {

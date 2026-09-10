@@ -6,6 +6,7 @@ import threading
 import json
 import os
 import re
+import config
 from config import (
     LOG_FILE, RULES,
     SUMMARY_WHATSAPP_TARGETS, ALERT_WHATSAPP_TARGETS, ALERT_IG_USERNAMES,
@@ -195,8 +196,9 @@ def activity_prompter_thread():
                 from alerts import send_alert
                 send_alert(msg, wa_global, ig_global, take_screenshot=False, delete_locally=False, custom_targets=config.ALERT_WHATSAPP_TARGETS)
             else:
-                msg = config.MESSAGES.get("PROMPT_TIMEOUT", f"🚨 [PROMPT TIMEOUT] The user ignored the '{prompt_msg}' prompt for {{allowed_time}} seconds! They are slacking.")
-                msg = msg.replace("{allowed_time}", str(allowed_time))
+                prompt_msg = "What did you do in the last 20 minutes?"
+                msg = getattr(config, "MESSAGES", {}).get("PROMPT_TIMEOUT", f"🚨 [PROMPT TIMEOUT] The user ignored the '{prompt_msg}' prompt for {{allowed_time}} seconds! They are slacking.")
+                msg = msg.replace("{allowed_time}", str(timeout_seconds))
                 # Take screenshot for timeout failure
                 from alerts import send_alert
                 send_alert(msg, wa_global, ig_global, take_screenshot=True, delete_locally=False, custom_targets=config.ALERT_WHATSAPP_TARGETS)

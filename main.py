@@ -44,60 +44,6 @@ from punishments import trigger_nuclear_option
 from prompter import activity_prompter_thread, wa_global as prompter_wa_global, ig_global as prompter_ig_global
 
 
-def _stop_syncthing():
-    """Kill Syncthing process to free memory. It auto-starts via GNOME on next boot."""
-    try:
-        subprocess.run(['pkill', '-f', 'syncthing'], timeout=5)
-        print("[*] Syncthing stopped to save memory.")
-        log.info("Syncthing killed after mobile data sync.")
-    except Exception:
-        pass
-
-
-def sync_mobile_data(max_wait=300, poll_interval=10):
-    """Wait for Syncthing to deliver a fresh mobile Activity Watch file,
-    then kill Syncthing to free memory (no more work left for it).
-    
-    Syncthing is already running (GNOME autostart). This function waits
-    for the mobile file's mtime to change, meaning the phone has sent a new
-    version. Used by the Recovery Protocol before sending missed summaries.
-    Returns True if the file was updated, False if timed out.
-    """
-    mobile_file = "/home/ayan/A/activity watch"
-    old_mtime = os.path.getmtime(mobile_file) if os.path.exists(mobile_file) else 0
-    old_date = datetime.datetime.fromtimestamp(old_mtime).strftime('%Y-%m-%d %H:%M') if old_mtime else "never"
-
-    print(f"[*] Waiting for Syncthing to sync mobile data (file last modified: {old_date})...")
-    log.info(f"Waiting for mobile AW file sync. Current mtime: {old_date}")
-    
-    try:
-        subprocess.Popen(['syncthing', '-no-browser'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        print("[*] Syncthing started on-demand for mobile data sync.")
-    except Exception as e:
-        log.error(f"Failed to start syncthing: {e}")
-
-    # Wait for file to update
-    start = time.time()
-    while time.time() - start < max_wait:
-        time.sleep(poll_interval)
-        try:
-            if os.path.exists(mobile_file):
-                new_mtime = os.path.getmtime(mobile_file)
-                if new_mtime > old_mtime:
-                    elapsed = int(time.time() - start)
-                    new_date = datetime.datetime.fromtimestamp(new_mtime).strftime('%Y-%m-%d %H:%M')
-                    print(f"[+] Mobile Activity Watch file synced! (took {elapsed}s, new mtime: {new_date})")
-                    log.info(f"Syncthing delivered fresh mobile data in {elapsed}s.")
-                    _stop_syncthing()
-                    return True
-        except OSError:
-            pass
-
-    print(f"[-] Syncthing sync timed out after {max_wait}s. Proceeding with existing data.")
-    log.warning(f"Syncthing sync timed out after {max_wait}s.")
-    _stop_syncthing()
-    return False
-
 
 if __name__ == "__main__":
     print("=== Digital Accountability Monitor ===")
@@ -115,13 +61,6 @@ if __name__ == "__main__":
         log.error(f"WhatsApp init failed: {e}")
         print(f"[-] WhatsApp init failed (will continue without it): {e}")
 
-    # try:
-    #     from instagram import Instagram
-    #     ig = Instagram()
-    #     print("[+] Instagram client wrapper ready.")
-    # except Exception as e:
-    #     log.error(f"Instagram init failed: {e}")
-    #     print(f"[-] Instagram init failed (will continue without it): {e}")
 
     # Set global clients for web server and prompter
     import web_server
@@ -162,12 +101,6 @@ if __name__ == "__main__":
         print(f"[*] Recovery Send: Sending missed summary for {saved_date}")
         log.info(f"Recovery Send for {saved_date}")
 
-        # Pull fresh mobile data from phone via Syncthing before sending summary
-        synced = sync_mobile_data(max_wait=300, poll_interval=10)
-        if synced:
-            log.info("Syncthing delivered fresh mobile data for recovery summary.")
-        else:
-            log.warning("Syncthing sync timed out. Proceeding with stale mobile data.")
 
         try:
             send_daily_summary(time_spent, wa, ig, target_date_str=saved_date)
@@ -246,13 +179,6 @@ if __name__ == "__main__":
                     # --- END WA WATCHDOG ---
                             
                     last_retry_time = time.time()
-                    
-                # Heartbeat check disabled to prevent false positives when Android puts the phone to sleep
-                # if not heartbeat_failed and (time.time() - last_heartbeat_time > 900):
-                #     heartbeat_failed = True
-                #     hb_msg = "🚨 [TAMPERED] Ayan's phone stopped sending security heartbeats. He likely disabled his monitoring app to hide. Demand an explanation!"
-                #     print("\n[!!!] HEARTBEAT FAILED: Sending tamper alert!")
-                #     send_alert(hb_msg, wa, ig)
                     
                 # Check for midnight reset or missed summary during sleep
                 now_time = time.time()
