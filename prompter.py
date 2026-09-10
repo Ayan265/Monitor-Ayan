@@ -194,14 +194,14 @@ def activity_prompter_thread():
                 msg = f"Ayan Last 20 mins: {user_response}\n{recent_text.strip()}"
                 print(f"[+] User responded: {user_response}")
                 from alerts import send_alert
-                send_alert(msg, wa_global, ig_global, take_screenshot=False, delete_locally=False, custom_targets=config.ALERT_WHATSAPP_TARGETS)
+                send_alert(msg, wa_global, ig_global, take_screenshot=False, delete_locally=False, custom_targets=config.SUMMARY_WHATSAPP_TARGETS)
             else:
                 prompt_msg = "What did you do in the last 20 minutes?"
                 msg = getattr(config, "MESSAGES", {}).get("PROMPT_TIMEOUT", f"🚨 [PROMPT TIMEOUT] The user ignored the '{prompt_msg}' prompt for {{allowed_time}} seconds! They are slacking.")
                 msg = msg.replace("{allowed_time}", str(timeout_seconds))
                 # Take screenshot for timeout failure
                 from alerts import send_alert
-                send_alert(msg, wa_global, ig_global, take_screenshot=True, delete_locally=False, custom_targets=config.ALERT_WHATSAPP_TARGETS)
+                send_alert(msg, wa_global, ig_global, take_screenshot=True, delete_locally=False, custom_targets=config.SUMMARY_WHATSAPP_TARGETS)
                 
         except Exception as e:
             log.error(f"Activity prompter thread error: {e}")

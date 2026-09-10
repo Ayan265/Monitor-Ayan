@@ -234,7 +234,7 @@ def send_weekly_summary(wa_client, ig_client):
                 time.sleep(1)
                 
             if wa_client.is_ready():
-                for target in SUMMARY_WHATSAPP_TARGETS:
+                for target in config.ALERT_WHATSAPP_TARGETS:
                     print(f"[*] Asking backend to send WhatsApp WEEKLY SUMMARY to {target}...")
                     try:
                         success_1 = wa_client.send_summary_msg(target, report_progress)
@@ -252,7 +252,7 @@ def send_weekly_summary(wa_client, ig_client):
                         queue_failed_message(report_wasted, "whatsapp", target)
             else:
                 log.error("WhatsApp not ready for weekly summary")
-                for target in SUMMARY_WHATSAPP_TARGETS:
+                for target in config.ALERT_WHATSAPP_TARGETS:
                     queue_failed_message(report_progress, "whatsapp", target)
                     queue_failed_message(report_wasted, "whatsapp", target)
                 
