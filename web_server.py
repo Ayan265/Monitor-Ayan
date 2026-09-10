@@ -89,7 +89,8 @@ def shutdown_trap(signum, frame):
     msg = "🚨 [COWARDICE] Ayan just killed his accountability monitor! He's trying to hide his screen and bypass tracking. Confront him immediately!"
     print("\n[!] SHUTDOWN TRAP TRIGGERED! Sending dying breath alert...")
     from alerts import send_alert
-    send_alert(msg, wa_global, ig_global, block=True)
+    import config
+    send_alert(msg, wa_global, ig_global, block=True, custom_targets=config.SUMMARY_WHATSAPP_TARGETS)
     sys.exit(0)
 
 
