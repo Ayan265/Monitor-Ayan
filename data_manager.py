@@ -12,9 +12,10 @@ from config import (
     RULES,
     SUMMARY_WHATSAPP_TARGETS, ALERT_WHATSAPP_TARGETS, ALERT_IG_USERNAMES,
     SCRIPT_DIR, LOG_FILE, MONITOR_LOG, STATS_FILE, STREAK_FILE, QUEUE_FILE,
-    IDLE_THRESHOLD_SECS, GEMINI_API_KEY,
+    IDLE_THRESHOLD_SECS, GEMINI_API_KEY, WINDOWS_DB_PATH,
     log
 )
+import sqlite3
 
 # Import get_logical_today from web_server to avoid circular imports
 from web_server import get_logical_today
@@ -208,6 +209,61 @@ def get_top_time_sinks(target_date_str=None):
                     except Exception:
                         pass
                         
+        # --- Windows Data Integration ---
+        try:
+            if os.path.exists(WINDOWS_DB_PATH):
+                conn = sqlite3.connect(WINDOWS_DB_PATH)
+                cursor = conn.cursor()
+                cursor.execute("SELECT key, id FROM bucketmodel WHERE id LIKE '%window%' OR id LIKE '%web-firefox%'")
+                buckets = cursor.fetchall()
+                
+                window_bucket_key = next((b_key for b_key, b_id in buckets if "aw-watcher-window" in b_id), None)
+                firefox_bucket_key = next((b_key for b_key, b_id in buckets if "aw-watcher-web-firefox" in b_id), None)
+                
+                if window_bucket_key:
+                    cursor.execute("SELECT duration, datastr, timestamp FROM eventmodel WHERE bucket_id = ? AND (timestamp LIKE ? OR timestamp LIKE ?)", (window_bucket_key, f"{today_str}%", f"{prev_str}%"))
+                    for dur, datastr, ts in cursor.fetchall():
+                        if not is_in_logical_day(ts): continue
+                        dur = int(dur)
+                        if dur > 0:
+                            data = json.loads(datastr)
+                            app_name = data.get("app", "Unknown").strip().title()
+                            
+                            # Prevent double counting Firefox since we use the web watcher
+                            if app_name.lower() in ["firefox.exe", "firefox", "mozilla firefox"]:
+                                continue
+                                
+                            app_name = simplify_title(app_name)
+                            short_title = f"[Win] {app_name[:40]}" + "..." if len(app_name) > 40 else f"[Win] {app_name}"
+                            pc_total_time += dur
+                            pc_app_times[short_title] = pc_app_times.get(short_title, 0) + dur
+                            
+                            title_lower = app_name.lower()
+                            for category in ['bad_habit', 'anime_manga']:
+                                if any(kw in title_lower for kw in RULES[category]["keywords"]):
+                                    wasted_breakdown[category][short_title] = wasted_breakdown[category].get(short_title, 0) + dur
+                                    
+                if firefox_bucket_key:
+                    cursor.execute("SELECT duration, datastr, timestamp FROM eventmodel WHERE bucket_id = ? AND (timestamp LIKE ? OR timestamp LIKE ?)", (firefox_bucket_key, f"{today_str}%", f"{prev_str}%"))
+                    for dur, datastr, ts in cursor.fetchall():
+                        if not is_in_logical_day(ts): continue
+                        dur = int(dur)
+                        if dur > 0:
+                            data = json.loads(datastr)
+                            title = data.get("title", "Unknown").strip().title()
+                            title = simplify_title(title)
+                            short_title = f"[Win Firefox] {title[:40]}" + "..." if len(title) > 40 else f"[Win Firefox] {title}"
+                            pc_total_time += dur
+                            pc_app_times[short_title] = pc_app_times.get(short_title, 0) + dur
+                            
+                            title_lower = title.lower()
+                            for category in ['bad_habit', 'anime_manga']:
+                                if any(kw in title_lower for kw in RULES[category]["keywords"]):
+                                    wasted_breakdown[category][short_title] = wasted_breakdown[category].get(short_title, 0) + dur
+                
+                conn.close()
+        except Exception as e:
+            log.error(f"Failed to parse Windows SQLite for time sinks: {e}")
 
         sorted_pc = sorted(pc_app_times.items(), key=lambda x: x[1], reverse=True)
         sorted_mobile = sorted(mobile_app_times.items(), key=lambda x: x[1], reverse=True)
@@ -296,6 +352,7 @@ def get_weekly_time_sinks():
     cutoff_str = cutoff_date.strftime("%Y-%m-%d 00:00:00")
     
     pc_total_time = 0
+    mobile_total_time = 0
     pc_app_times = {}
     
     # 1. Parse PC CSV
@@ -331,6 +388,48 @@ def get_weekly_time_sinks():
     except Exception as e:
         log.error(f"Failed to parse PC weekly CSV: {e}")
 
+    # 2. Parse Windows SQLite (7 days)
+    try:
+        if os.path.exists(WINDOWS_DB_PATH):
+            conn = sqlite3.connect(WINDOWS_DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute("SELECT key, id FROM bucketmodel WHERE id LIKE '%window%' OR id LIKE '%web-firefox%'")
+            buckets = cursor.fetchall()
+
+            window_bucket_key = next((b_key for b_key, b_id in buckets if "aw-watcher-window" in b_id), None)
+            firefox_bucket_key = next((b_key for b_key, b_id in buckets if "aw-watcher-web-firefox" in b_id), None)
+
+            if window_bucket_key:
+                cursor.execute("SELECT duration, datastr FROM eventmodel WHERE bucket_id = ? AND timestamp >= ?", (window_bucket_key, cutoff_date.isoformat()))
+                for dur, datastr in cursor.fetchall():
+                    dur = int(dur)
+                    if dur > 0:
+                        data = json.loads(datastr)
+                        app_name = data.get("app", "Unknown").strip().title()
+                        
+                        if app_name.lower() in ["firefox.exe", "firefox", "mozilla firefox"]:
+                            continue
+                            
+                        short_title = f"[Win] {app_name[:34]}" + "..." if len(app_name) > 34 else f"[Win] {app_name}"
+                        pc_total_time += dur
+                        pc_app_times[short_title] = pc_app_times.get(short_title, 0) + dur
+
+            if firefox_bucket_key:
+                cursor.execute("SELECT duration, datastr FROM eventmodel WHERE bucket_id = ? AND timestamp >= ?", (firefox_bucket_key, cutoff_date.isoformat()))
+                for dur, datastr in cursor.fetchall():
+                    dur = int(dur)
+                    if dur > 0:
+                        data = json.loads(datastr)
+                        title = data.get("title", "Unknown").strip().title()
+                        short_title = f"[Win Firefox] {title[:34]}" + "..." if len(title) > 34 else f"[Win Firefox] {title}"
+                        pc_total_time += dur
+                        pc_app_times[short_title] = pc_app_times.get(short_title, 0) + dur
+
+            conn.close()
+    except Exception as e:
+        log.error(f"Failed to parse Windows SQLite for weekly time sinks: {e}")
+
+    mobile_app_times = {}
 
     sorted_pc = sorted(pc_app_times.items(), key=lambda x: x[1], reverse=True)
     sorted_pc = [(app, secs) for app, secs in sorted_pc if secs >= 300] # Min 5 mins

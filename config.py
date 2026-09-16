@@ -14,6 +14,7 @@ import json
 # ==========================================
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 LOG_FILE = os.path.join(SCRIPT_DIR, "data", "activity_history.csv")
+WINDOWS_DB_PATH = "/mnt/windows_c/Users/vea7a/AppData/Local/activitywatch/activitywatch/aw-server/peewee-sqlite.v2.db"
 MONITOR_LOG = os.path.join(SCRIPT_DIR, "logs", "monitor.log")
 STATS_FILE = os.path.join(SCRIPT_DIR, "data", "daily_stats.json")
 STREAK_FILE = os.path.join(SCRIPT_DIR, "data", "streak.json")

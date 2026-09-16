@@ -13,6 +13,12 @@ class WhatsApp:
         self._last_qr_popup = 0
         self._restart_lock = threading.Lock()
         
+        # Prevent ghost processes from blocking Port 3001 if the service restarted
+        try:
+            subprocess.run(['pkill', '-9', '-f', 'wa_backend'], capture_output=True, timeout=5)
+        except Exception:
+            pass
+        
     def start_client(self):
         try:
             resp = requests.post(f"{self.backend_url}/start", timeout=5)

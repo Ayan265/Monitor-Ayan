@@ -26,9 +26,12 @@ def queue_failed_message(message, platform, target, image_path=None):
             except Exception:
                 pass
                 
+        if not message.endswith("⏳ *(Delayed Delivery)*"):
+            message = f"{message}\n\n⏳ *(Delayed Delivery)*"
+            
         queue.append({
             "timestamp": str(datetime.datetime.now()),
-            "message": f"{message}\n\n⏳ *(Delayed Delivery)*",
+            "message": message,
             "platform": platform,
             "target": target,
             "image_path": image_path
@@ -48,16 +51,20 @@ def retry_failed_messages(wa_client, ig_client):
         return
         
     try:
-        with open(QUEUE_FILE, "r") as f:
-            queue = json.load(f)
-            
-        if not queue:
-            return
-            
+        with queue_lock:
+            with open(QUEUE_FILE, "r") as f:
+                queue = json.load(f)
+                
+            if not queue:
+                return
+                
+            # Clear the file since we grabbed everything
+            with open(QUEUE_FILE, "w") as f:
+                json.dump([], f)
+                
         print(f"[*] Found {len(queue)} messages in the Vault. Attempting retry...")
         log.info(f"Attempting to retry {len(queue)} queued messages.")
         
-        remaining_queue = []
         wa_started = False
         
         for item in queue:
@@ -95,10 +102,8 @@ def retry_failed_messages(wa_client, ig_client):
                     success = False
                     
             if not success:
-                remaining_queue.append(item)
+                queue_failed_message(msg, platform, target, image_path)
                 
-        with open(QUEUE_FILE, "w") as f:
-            json.dump(remaining_queue, f, indent=4)
     except Exception as e:
         log.error(f"Failed to process message queue: {e}")
 
